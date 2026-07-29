@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="46">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>41</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"RTV.exe"+06387C60</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>43</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"THREADSTACK0"-00000360</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>45</ID>
+      <Description>"horz view"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>20F896543F8</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>46</ID>
+      <Description>"No description"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <VariableType>Array of byte</VariableType>
+      <ByteLength>29</ByteLength>
+      <Address>RTV.exe+125FD10</Address>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols/>
+</CheatTable>

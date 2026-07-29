@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="46">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>1</ID>
+      <Description>"Health"</Description>
+      <VariableType>Double</VariableType>
+      <Address>29CDDA03FA8</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>2</ID>
+      <Description>"Health Pointer (pointerscan result)"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"RTV.exe"+0638B920</Address>
+      <Offsets>
+        <Offset>6F8</Offset>
+        <Offset>988</Offset>
+        <Offset>78</Offset>
+        <Offset>0</Offset>
+        <Offset>168</Offset>
+      </Offsets>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols/>
+</CheatTable>

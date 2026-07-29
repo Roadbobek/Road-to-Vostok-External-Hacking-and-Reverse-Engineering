@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="52">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>41</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"RTV.exe"+06387C60</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>43</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"THREADSTACK0"-00000360</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>45</ID>
+      <Description>"horz view"</Description>
+      <VariableType>4 Bytes</VariableType>
+      <Address>20F896543F8</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>48</ID>
+      <Description>"viewportcodeinstructions"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <ShowAsSigned>0</ShowAsSigned>
+      <VariableType>Array of byte</VariableType>
+      <ByteLength>15</ByteLength>
+      <Address>RTV.exe+125FD10</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>49</ID>
+      <Description>"get pointer for viewport stuff"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>{ Game   : Road to Vostok
+  Version:
+  Date   : 2026-07-28
+  Author : Roadb
+  Description :
+
+  &lt;Optional info&gt;
+}
+
+
+
+[ENABLE]
+
+// perform an array of bytes search inside the memory module RTV.exe
+// the INJECT variable holds the starting memory address for our scan (RTV.exe+125FD10, but can change on update)
+aobscanmodule(INJECT,RTV.exe,44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00) // should be unique
+alloc(newmem,$1000,INJECT)
+
+label(code)
+label(return)
+
+newmem:
+
+code:
+  mov [rdx+08],r8d
+  mov [rdx+0C],r9d
+  jmp return
+
+INJECT:
+  jmp newmem
+  nop 3
+return:
+registersymbol(INJECT)
+
+[DISABLE]
+
+INJECT:
+  db 44 89 42 08 44 89 4A 0C
+
+unregistersymbol(INJECT)
+dealloc(newmem)
+
+
+
+{
+// ORIGINAL CODE - INJECTION POINT: RTV.exe+125FD10
+
+RTV.exe+125FCE8: 48 C7 05 3D 3F 12 05 00 00 00 00  - mov qword ptr [RTV.exe+6383C30],00000000
+RTV.exe+125FCF3: BA 08 00 00 00                    - mov edx,00000008
+RTV.exe+125FCF8: E9 A3 69 95 03                    - jmp RTV.exe+4BB66A0
+RTV.exe+125FCFD: 90                                - nop
+RTV.exe+125FCFE: 90                                - nop
+RTV.exe+125FCFF: 90                                - nop
+RTV.exe+125FD00: 8B 41 40                          - mov eax,[rcx+40]
+RTV.exe+125FD03: C3                                - ret
+RTV.exe+125FD04: 90                                - nop
+RTV.exe+125FD05: 66 66 2E 0F 1F 84 00 00 00 00 00  - nop word ptr cs:[rax+rax+00000000]
+// ---------- INJECTING HERE ----------
+RTV.exe+125FD10: 44 89 42 08                       - mov [rdx+08],r8d
+// ---------- DONE INJECTING  ----------
+RTV.exe+125FD14: 44 89 4A 0C                       - mov [rdx+0C],r9d
+RTV.exe+125FD18: C6 42 14 01                       - mov byte ptr [rdx+14],01
+RTV.exe+125FD1C: C3                                - ret
+RTV.exe+125FD1D: 00 00                             - add [rax],al
+RTV.exe+125FD1F: 00 44 89 42                       - add [rcx+rcx*4+42],al
+RTV.exe+125FD23: 08 44 89 4A                       - or [rcx+rcx*4+4A],al
+RTV.exe+125FD27: 0C C6                             - or al,-3A
+RTV.exe+125FD29: 42 14 01                          - adc al,01
+RTV.exe+125FD2C: C3                                - ret
+RTV.exe+125FD2D: 90                                - nop
+}
+</AssemblerScript>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols/>
+</CheatTable>

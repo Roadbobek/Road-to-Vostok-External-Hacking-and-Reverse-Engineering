@@ -1,0 +1,129 @@
+i am going to attempt to make some external hacks for rtv, ive only really made internal hacks with mod godot and mono and il2cpp unity mod loaders.
+i downloaded and read a cheat engine table and it was quiet complicated, it did have some regular pointers for stuff like character speed but most of the cheat consisted of lua scripts that were able to do stuff like fly and spawn items in.
+i tried reading them as i understand lua but they are quiet complicated but i did see comments referencing the games internal gd scripts, so the script must be working with the engine on a high level.
+i will start with trying to find some pointers to easy to find addresses that i can see changing like health and ammo, then i will try to find things like player walk and run speed which i dont think change, note i do have the game fully decompiled running in editor.
+also, something i was thinking (thinking) about is if the previous cheat engine tables creator even used cheat engine to find the memory addresses or another more advanced application, i saw a tool called gddumper which is a cheat engine script that extracts data from running godot apps.
+the script dumps node data of a root viewport, helping with reverse engineering and debugging. for eg it can find offsets, dump gd nodes to cheat engines address list and it even says it can arbitrary call gdfunctions.
+it says it can find the addresses of gd nodes and the last cheat engtine i read had addresses with code comments referencing the games gd script files which this tool might help find.
+the person who made the gddumper tool actually thanks the person who made the rtv cheat engine table so he was probably doing it before the tool, meaning it probably doesnt use it, damn.
+okay let me poke around manually now, this is all being done on road to vostok version 0.1.1.3 off steam running on directx, tooling is just cheat engine 7.6 for now.
+i found the real player heath this time, what i did differently opposed to last time is i searched every type, i found a double which goes from 0-100 and it reflects health, hard setting it at 100 in cheat engine also does it in game.
+the address is 29CDDA03FA8 but there are a couple other addresses like 29CDDA03FAC (4 byte, float, double), one for each with same address then 29D853C688C double and 29D853C6890 float, most of them seam to change my health when edited.
+these addresses are just temporary for this runtime so i have to get some pointers.
+i dont really know what im doing but i generated a pointer map on the health address and then did a pointer scan then i sorted by doubles,
+the first pointer in the list being the shortest one of 5 offsets compared to other with 6 to 7 (67) seems to work fine but there are 4160 pointer paths.
+the pointer to 29CDDA03FA8 has 5 offsets with the final pointer being "RTV.exe"+0638B920.
+i also found out what the 29CDDA03FAC address is, since cheat engine looks for memory data aligned in 4 byte chunks and a double is 8 bytes 29CDDA03FAC would be the middle of the real 29CDDA03FA8 health address.
+when editing 29CDDA03FA8 cheat engine knows its a double so it edits both 4 byte chunks where the double lays, but when editing 29CDDA03FAC which is the second half it only edits the last 4 byte chunk.
+okay back to the pointer lets understand it, also another note, in godot 4 the developers made all standard float variables 64 bit double precision floats that why in the games gdscript it shows as a regular float (100.0) but is compiled to a double.
+now lets see, the pointer in cheat engine for health (29CDDA03FA8) shows as (["RTV.exe"+0638B920] -> 29CE9F6E8C0) with 5 offsets being [offset 0: 168], [offset 1: 0], [offset 2: 78], [offset 3: 988], [offset 4: 6F8]).
+why were there so many? in a game engine like godot the engine itself needs to look at your player from multiple different perspectives, instead of there being only one path to your health, godot creates multiple "roads" that all lead to the exact same spot in ram, memory.
+i forgot but the health variable is actually set and stored in Resource file GameData.tres / GameData.gd, i am not too sure how they work but health is declared in GameData.gd and every other gdscript edits it in place.
+In Godot, nodes (like your player controller) disappear and get deleted every time you change maps or die. If health were stored directly inside the player node, your memory addresses would constantly vanish.
+GameData.gd is the script that declares all the different variables, at the top you have "extends Resource" and "class_name GameData".
+GameData.tres is the Resource file, it is an actual data container saved to pc storage that uses the GameData.gd blueprint, it holds the actual active variable that every other script uses, in a text editor it shows
+"[gd_resource type="Resource" script_class="GameData" format=3 uid="uid://dmtrkjhx3ea3l"]", "[ext_resource type="Script" uid="uid://2gbot7hnxd3c" path="res://Scripts/GameData.gd" id="1"]", "[resource]", "script = ExtResource("1")".
+unlike other .tres Resource files this one isnt used to save data after exiting the game its only temporary, soma are used to save the game state like player stats and inventory, so its pretty much empty in a text editor.
+GameData.tres is a Resource. Resources in godot are handled by Reference Counting. this means the resource lives in its own dedicated block of memory, completely independent of the game world. The player node, the HUD, and the save system all just point to this single, shared block of data.
+GameData.gd defines what the variables are (compiled into the layout of the memory block).
+GameData.tres is the actual location in RAM where those variables live while the game is running. because every script preloads this exact .tres file, editing that one memory block instantly updates the player, the HUD, the save system, and everything else simultaneously.
+the original memory address that stores the health variable (29CDDA03FA8) is purely temporary, it lives on the computers heap in memory. whenever you restart the game, return to main menu, or do anything that will remove GameData.tres from memory godot will recreate GameData.tres at a completely different address, like 3B4FD21A0F8 for eg.
+thats why we need the pointer to point to the memory region instead of just having a static address. going back to (["RTV.exe"+0638B920] -> 29CE9F6E8C0) and our 5 offsets ([offset 0: 168], [offset 1: 0], [offset 2: 78], [offset 3: 988], [offset 4: 6F8]), lets break this down.
+"RTV.exe" : is the Module Base Address. this is the starting line where windows loads the game into RAM. it changes every single time the game restarts because of ASLR.
+0638B920 : is the Module Offset (Relative Virtual Address / RVA). it is a hardcoded byte distance compiled into the binary being the executable / application.
+because windows maps the executable file directly into RAM byte for byte, this offset tells you and cheat engine exactly how many bytes to calculate forward from the Module Base Address to land on the global static pointer.
+"RTV.exe" + 0638B920 : is the Static Pointer Address. It’s the math equation that targets the permanent, unmoving memory address where our pointer chain begins.
+-> 29CE9F6E8C0 : is the First Resolved Address. this is the dynamic memory address stored inside your global static pointer slot, its the resulting number / address stored inside the memory address thats calculated by adding the Module Base Address ("RTV.exe") and the Module Base Offset (0638B920) together.
+cheat engine then uses it as the base address to calculate the final Target Address using the Offsets, the Target Address is our health variable in this example. We dont need to store this as it is dynamic and calculated by our past equation. it is an important part in the process thats why i mention it, everything else we need to save tho.
+The 5 offsets (168, 0, 78, 988, 6F8) : are the Multi-Level Pointer Offset Chain. in Godot, scripts and resource files are nested inside each other as data structures in memory. These offsets are the exact byte-distances used to navigate through those layers.
+the chain starts at the engine's core memory block, navigates through the active script instances, jumps directly into the loaded structure of your GameData.tres resource file, and the final offset (6F8) lands directly on the health float variable stored inside it.
+instead of just adding all the offsets together into one big number, the calculation alternates between adding an offset and dereferencing (reading the memory address stored inside).
+heat engine calculates it in a loop like this:
+calculate and read: It calculates "RTV.exe" + 0638B920 and looks inside to read the address stored there (29CE9F6E8C0).
+add Offset 0: It adds 168 to 29CE9F6E8C0. it looks inside this new address to read the next destination address.
+add Offset 1: It takes that new address, adds 0, and looks inside it to read the next destination address.
+repeat: It does the same thing for offsets 78 and 988 always adding the number, then reading the address found inside.
+final Step: It takes the final address, adds the last offset (6F8), but does not look inside. adding this final offset lands it exactly on the target address (29CDDA03FA8) where your health value sits.
+By reading the value inside at every step, the calculation is able to follow the links from one separate memory block to another across the heap, and this is how we bypass ASLR.
+what is ASLR (Address Space Layout Randomization)?
+ASLR is a low level security defense mechanism implemented by the operating system kernel and enforced by the CPUs Memory Management Unit (MMU).
+29CDDA03FA8 : is the Final Target Address. This is the actual address in the heap memory where the health variable is stored for this session. cheat engine arrives at this exact number after applying all 5 offsets to the chain, and this is the location where the health value is read and modified.
+i think i kind of get it now this explenation took me a good hour or two, and note its for me, here is a nice pointer explenation.
+the Static Pointer (or Base Pointer): this is only "RTV.exe" + 0638B920. It is just the single, permanent starting address.
+the Pointer Chain (or Multi-Level Pointer): this is the entire package together ("RTV.exe" + 0638B920 + all 5 offsets).
+when i say pointer im probably just reffering to the whole pointer chain.
+well i restarted my game and the pointer doesnt seem me be pointing all to much, or to, much at all...
+all the previous theory is correct but i guess i went wrong with one of the parts, i used the pointer scan feature, it asked for multiple pointer lists or something but i only gave it one so i had about 4200 results and they all worked then so i just picked the shortest one,
+but i dont think most of them are static or whatever because now it doesnt point to anything at all. mayube if i added more pointer lits it wouldve been more accurate and if i knew what the offsets were really traversing through.
+now im gonna try to get the pointer chain by analysing what assembly writes to the health address, lets see.
+using the 'find out what writed to this address' feature i got this instruction, (Address: [RTV.exe+2B52316], Bytes: [F2 0F11 41 08], Opcode: [movsd [rcx+08],xmm0]), now i dont really remember how we get a pointer from this let me search this up.
+oh fuck my life i wonder where it all went wrong, so lets take a step back one look at my last mistake of many. we can fuck around in assemby later, hopefully not tho.
+"RTV.exe"+0638B920 calculates successfuly, the first offset calcs to 00000000 or something close and the other 4 to ????????.
+im gonna try and do more pointer scans to narrow down the results, i by comparing against first scan results i got like 50 to 60 pointers i dont remember. i added all of them to my cheat engine address/pointer list and ive been restarting my game and removing the broken pointers.
+the firt time a lot of them stopped pointing to anything, second time more stopped pointing and some started pointing to random high numbers, third time 3 more broke, fourth time 4 broke, fifth time 1 broke but i noticed some break temporarily, sixth time all were broken,
+this might have something to do with me restarting my pc, but then i restart the game and all work and 2 glitch out time to time, i went into menu and back and now only thje buggy ones work the othjer are moslty some random same value and 2 or broken so ill keep the 2 buggy ones ig,
+now the 2 values we have left sometiems work but most of the time dont, sometimes they work for a second or two, idk.
+from all the little research i have done i see godot 4s memory structure is quiet advanced and voliotile howtfdoispellthateven volatile mayb so idek let me do some more research.
+i am going to try to find the address of the GameData.tres resource by analysing what assembly writes to health maybe.
+this is the code that writes to the health var, address: RTV.exe+2B52316, bytes: F2 0F11 41 08, opcode: movsd [rcx+08],xmm0.
+also i read some cheat engine documentation about cheat engine auto assemble and i realised thats what the scripts were in the cheat engine table i read before.
+i am going to do some stuff in assembly outside of this to hopefully learn, a tutorial or two and a small program yk.
+its a couple days later i didnt really learn much assembly but i understand mov and sub and xor and whatnot, i started messing around again and cause im sick asf i forgot to note shit down soo to try and find the root master race pointer i found an address that changes the
+player view scale or something so if i can get a aob script to find that part i can maybe have a static root pointer.
+i viewed what writes to it, copied a good chunk of the hex data, bytes, above and to since with a smaller chunk the scan came up with two results, there are no volatile bytes. it does return a different address to our original instruction but it doesnt matter i think.
+original address: 20F896543F8
+write instruction: RTV.exe+125FD20 - 44 89 42 08           - mov [rdx+08],r8d
+bytes used for scan: B8 01 00 00 00 C3 66 2E 0F 1F 84 00 00 00 00 00 44 89 42 08 44 89 4A 0C C6 42 14 01 C3
+address for instruction: RTV.exe+125FD10
+and now a couple addresses down we have the original address RTV.exe+125FD20, it seams useless but this is good since now we can find this instruction automatically now we just have to get a pointer out of it.
+as in, the address will change, but the bytes used to find it wont and we use that to find the instruction since it doesnt change, and we cant just copy the bytes for RTV.exe+125FD20 because they appear in another place, so we aim upm a bit.
+now i need to calculate the offset i think its just one +X since its not nested really we just need to go from XYZ10 to XYZ20, and i see calculating a offset isnt taht complicated, the assembly/opcodes are represented in bytes, so advancing by a offset of X just goes down/forward X bytes.
+for example to go from out calculation 125FD10 to 125FD20 we do 125FD20 - 125FD10 which is 10 but thats hex and hex 10 is 16, so we just move forward 16 bytes. look, this is the dissasembled memory region from out calculation to the end goal, our instruction:
+RTV.exe+125FD10 - B8 01000000           - mov eax,00000001
+RTV.exe+125FD15 - C3                    - ret 
+RTV.exe+125FD16 - 66 2E 0F1F 84 00 00000000  - nop word ptr cs:[rax+rax+00000000]
+RTV.exe+125FD20 - 44 89 42 08           - mov [rdx+08],r8d
+we are at "B8 01000000", moving by 16 bytes would skip "B8 01'00'00'00" (5), "C3" (1), "66 2E 0F'1F 84 00 00'00'00'00" (10), and we end up on "44 89 42 08" which is the bytes for our instruction, 125FD20.
+i dont want to get too ahead of myself so i am going to restart my game and see if i can manually calculate all this again before i try to script anything.
+i was expecting that i would have to run the scan again on the bytes to get the new address, but actually the old address RTV.exe+125FD10 is still valid and points to the assembly fine, let me restart one more time.
+i havent restarted my pc on anything but it still works, huh. this part of the games memory seems to stay the same, ofc it is dynamic as in its not a raw address the game calculates the random place of RTV.exe in memory and simply calculates using the fixed offset 125FD10,
+but most of the time stuff changes per run but maybe because this is so high up, code to with with scene tree / root? since it changes the view width it doesnt change hmmm.
+something like a small update that adds new code could break this but because this could be higher, godots code for eg this might not really change much but it is still smart and i just want to calculate the aob or whatever myself i dont really know.
+wait but also, our prior addresses always changed because they were for variables, numbers, things like health for example which gets put into memory when gamedata loads, so it can be anywhere it is very dynamic but here our address points to the code, assembly, a literal cpu instruction,
+when we run the game it basicaly copies the rtv.exe which is assembly into memory, so as long as the rtv.exe, the code, doesnt change our address doesnt change. okay.
+but if it is updated that could and probably will move so we need to do more stuff.
+wait i dont think the offsets were really needed since we are using this to calculate a static base pointer so we can later have a base for our other pointers, we use this copde because i think it relates to godot as in the engine like the rendering so its probably close to root,
+so it doesnt matter is if like 3 instsreuctions above idk, i dont even know how to get the static base pointer yet really.
+ive been doing everything manually for now so i understand it and can easily test it so thats exactly what im gonnna do, but wait let me go back a bit its the next day and i need to clear my mind up.
+what is he singing abt???     <edit: saam ):
+its been a few months again.. july somehow.
+june 8 to july 12 and i doubt i did anything then.
+cheat engine 7.7 woow.
+now i have a pointer (125FD20) to the byte array of asm instructions that we will use for the aob or wtv scan, uhh.
+he way i got to that code is i scanned for my res of 2560 and found a var that changed how much i could see horizontally when edited then got the asm code from that.
+people smarter than me say that [RTV.exe+6383C30] on the asm line (RTV.exe+125FCA8 - mov [RTV.exe+6383C30],rcx) around our bits is a part the godot 4 DisplayServer, the resolution singleton.
+i think what i was supposed to do is to find a pointer chain from that address to get to the root node but im not really learning anything just reading stuff and asking people and google gemini so im going to try a different approach.
+tomorrow i might continue this and learn about aob scanning.
+ok so its been like 14 or 15 days.
+okay so since i have padded the asm instruction (RTV.exe+125FD20 - 44 89 42 08 - mov [rdx+08],r8d) above and below the aob scan isnt hitting it correctly, we need to pad it since then the scan hits another instruction thats the exact same but i am going to pad it down only now.
+scanning for 44894208 which is the instruction that does something i dont remember returns 26 addresses when doing a array of bytes scan, adding the next instruction makes it 4489420844894a0c and now we get 4 addresses found, 4489420844894a0cc6421401 gives us 3, 4489420844894a0cc6421401c3 gives 3,
+and finally 4489420844894a0cc6421401c30000 gives us 1 address.
+RTV.exe+125FD10 - 44 89 42 08           - mov [rdx+08],r8d          <<< this is the instruction we want, everything below is needed to make a unique block for scanning
+RTV.exe+125FD14 - 44 89 4A 0C           - mov [rdx+0C],r9d
+RTV.exe+125FD18 - C6 42 14 01           - mov byte ptr [rdx+14],01
+RTV.exe+125FD1C - C3                    - ret 
+RTV.exe+125FD1D - 00 00                 - add [rax],al
+all equals 4489420844894a0cc6421401c30000 / 44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00 00
+now we have (RTV.exe+125FD10 = 44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00 00)
+since this is the actual assembly this is static and wont change until update, and even if the game gets updated i think this will likely stay unless the engine itself is updated.
+What is RDX?
+RDX is a hardware register—a tiny, 64-bit storage slot physically built inside your computer's CPU processor chip. It is not an address in RAM; it is a temporary scratchpad the CPU uses to hold data while executing instructions.
+When the CPU executes mov [rdx+08], r8d:
+RDX holds a 64-bit Heap Memory Address (e.g., 0x000001FD8B2A1040). This address points to the start of the Viewport object in your system's RAM.
+r8d holds the Horizontal Resolution integer (e.g., 2560).
+[rdx+08] means: "Take the address in RDX, go 8 bytes forward in RAM, and write the value 2560 there."
+Why does it write to [rdx+08] instead of [rdx]?In C++, when an object (like a Viewport or Window class) is allocated in memory, its variables are laid out end-to-end in RAM.RDX holds the base address (offset +0x00) where the object starts. Moving 8 bytes ahead (+0x08) happens for two main reasons in 64-bit object-oriented code:1. The 64-bit VTable Pointer (Offset +0x00 to +0x07)In 64-bit C++, whenever a class uses virtual functions, the compiler automatically inserts an 8-byte VTable Pointer (vftable) as the very first item at the top of the object.Bytes 0 through 7 store the pointer to the object's function blueprint.Therefore, the object's actual data fields (variables) can't start until byte 8 (+0x08)!2. Variable Size Stacking MathLook at how the CPU packs the data starting from offset +0x08:Memory OffsetRegister WrittenVariable TypeSizeExample Value[rdx + 0x00](Compiler Internal)VTable Pointer8 bytes (qword)0x00007FF...[rdx + 0x08]r8dWidth4 bytes (dword)2560[rdx + 0x0C]r9dHeight4 bytes (dword)1440[rdx + 0x14]01IsDirty / Active Flag1 byte (byte)1 (true)Notice the math:Width starts at +0x08 and takes up 4 bytes (bytes 8, 9, 10, 11).8 + 4 = 12 (which is 0x0C in hex).So Height naturally starts immediately after Width at [rdx + 0x0C]!
+ok so now getting into aob scanning in the ce auto assembler, opening the auto assembler in the memory viewer, going to template then selecting aob injection, having our instruction (RTV.exe+125FD10 - 44 89 42 08) selected in the memory viewer automatically fills in the template with it,
+it actually generates the aob scan function for anything you have selected, if you select any amount of instructions it will find the shortest array of bytes that matches it without duplicates. for eg just having (44 89 42 08) selected it got (44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00) for us,
+which is pretty much the same code we got just without one byte being 00, i guess we dont need the full (RTV.exe+125FD1D - 00 00 - add [rax],al) instruction we can just cut it off at half. so now we have 4489420844894a0cc6421401c300 / 44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00 .
+oki next day, im gonna learn some basic auto assembler and write some comments in the aob template so some notes will be there.
