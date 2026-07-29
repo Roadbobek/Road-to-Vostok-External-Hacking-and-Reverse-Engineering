@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CheatTable CheatEngineTableVersion="52">
+  <CheatEntries>
+    <CheatEntry>
+      <ID>50</ID>
+      <Description>"Game Version: 0.1.1.3"</Description>
+      <ShowAsSigned>0</ShowAsSigned>
+      <VariableType>Byte</VariableType>
+      <Address/>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>41</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"RTV.exe"+06387C60</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>43</ID>
+      <Description>"pointerscan result"</Description>
+      <VariableType>Double</VariableType>
+      <Address>"THREADSTACK0"-00000360</Address>
+      <Offsets>
+        <Offset>128</Offset>
+        <Offset>28</Offset>
+        <Offset>60</Offset>
+        <Offset>340</Offset>
+        <Offset>4A0</Offset>
+        <Offset>18</Offset>
+        <Offset>248</Offset>
+      </Offsets>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>52</ID>
+      <Description>"horz view 1"</Description>
+      <ShowAsSigned>0</ShowAsSigned>
+      <VariableType>4 Bytes</VariableType>
+      <Address>222D06A0E68</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>48</ID>
+      <Description>"viewportcodeinstructions"</Description>
+      <ShowAsHex>1</ShowAsHex>
+      <ShowAsSigned>0</ShowAsSigned>
+      <VariableType>Array of byte</VariableType>
+      <ByteLength>15</ByteLength>
+      <Address>RTV.exe+125FD10</Address>
+    </CheatEntry>
+    <CheatEntry>
+      <ID>49</ID>
+      <Description>"cea aob example - get pointer for viewport stuff"</Description>
+      <VariableType>Auto Assembler Script</VariableType>
+      <AssemblerScript>{ Game   : Road to Vostok
+  Version: 0.1.1.3
+  Date   : 2026-07-28
+  Author : Roadbobek
+  Description :
+
+  &lt;Optional info&gt;
+}
+
+
+
+// ENABLE: CE scans for the AOB -&gt; Finds RTV.exe+125FD10 (INJECT) -&gt; Allocates newmem -&gt; Overwrites 125FD10 with jmp newmem + 3 NOPs.
+// Game runs --&gt; Hits 125FD10 -&gt; Instantly jumps to newmem -&gt; Runs mov [rdx+08], r8d &amp; mov [rdx+0C], r9d -&gt; Jumps back to return (125FD18).
+// DISABLE: CE writes 44 89 42 08 44 89 4A 0C back to 125FD10 -&gt; Unregisters INJECT -&gt; Frees newmem.
+
+
+//                  ┌─────────────────────────────────────────┐
+//                  │         Script Compilation Pass         │
+//                  └────────────────────┬────────────────────┘
+//                                       │
+//              ┌────────────────────────┴────────────────────────┐
+//              ▼                                                 ▼
+//   ┌─────────────────────┐                           ┌─────────────────────┐
+//   │  Local Script Label │                           │    Global Symbol    │
+//   │  label(return)      │                           │  registersymbol()   │
+//   ├─────────────────────┤                           ├─────────────────────┤
+//   │ • Private to script │                           │ • Cheat Engine UI   │
+//   │ • Used for JMPs     │                           │ • [DISABLE] block   │
+//   │ • Forgotten on end  │                           │ • Main Address List │
+//   └─────────────────────┘                           └─────────────────────┘
+
+// Local Labels - label(code), label(return):
+// These are temporary internal bookmarks used only while compiling the script. They tell Cheat Engine's assembler: "I am going to jump to a spot called return later, so reserve a temporary variable for its address." Once the script finishes compiling into raw machine code, these local labels vanish.
+// Global Registered Symbols - registersymbol(INJECT):
+// registersymbol takes the name "INJECT" and its resolved address (RTV.exe+125FD10) and pushes it into Cheat Engine’s Global Symbol Table.
+// Why is this necessary? When you uncheck the box to [DISABLE] the script, Cheat Engine executes a separate process. It needs to know where INJECT was found during [ENABLE]. Because you registered it globally, [DISABLE] can look up "INJECT" by name and write the original bytes back to RTV.exe+125FD10 without needing to re-scan memory!
+
+
+// Label map:
+
+// 1. Compiler sees 'INJECT:'
+//    └── Memory Cursor is sitting at: RTV.exe+125FD10
+//    └── Assembler records: INJECT = RTV.exe+125FD10
+//
+// 2. Compiler reads 'jmp newmem' (5 bytes)
+//    └── Writes 5 bytes into memory.
+//    └── Memory Cursor advances +5 bytes -&gt; RTV.exe+125FD15
+//
+// 3. Compiler reads 'nop 3' (3 bytes)
+//    └── Writes 3 bytes into memory.
+//    └── Memory Cursor advances +3 bytes -&gt; RTV.exe+125FD18
+//
+// 4. Compiler sees 'return:'
+//    └── Memory Cursor is sitting at: RTV.exe+125FD18!
+//    └── Assembler records: return = RTV.exe+125FD18
+
+
+// 1. How the Memory Cursor Works
+// When Cheat Engine compiles your script, it reads your code line-by-line from top to bottom. It maintains an internal counter called the Memory Cursor to track: "Which exact byte address am I looking at right now?"
+// The rule is simple: The cursor ONLY moves forward when the assembler encounters instructions that turn into real physical bytes in RAM.
+// Assembly Instructions (mov, jmp, nop, db) write machine code into RAM, so they push the cursor forward by the exact size of that instruction (usually 1 to 5 bytes).
+// Comments (//), blank lines, and pre-declarations (label(code)) produce zero machine code, so the cursor stays completely still.
+// 2. How Labels Get Their Address
+// A label (like INJECT:, code:, or return:) consumes 0 bytes of memory. It does not write any machine code to the game.
+// Instead, whenever the assembler sees label_name:, it performs one simple action:
+// "Take the current numerical address sitting in the Memory Cursor, and assign that number to label_name."
+
+
+
+
+
+
+// on activation in table
+[ENABLE]
+
+// perform an array of bytes search inside the memory module RTV.exe
+// the INJECT label is a variable that holds the starting memory address for our scanned for instructions (RTV.exe+125FD10, but can change on update)
+aobscanmodule(INJECT,RTV.exe,44 89 42 08 44 89 4A 0C C6 42 14 01 C3 00) // should be a unique aob
+
+// allocate new empty block in memory
+// newmem, the label (memory address for the start of the memory block)
+// $1000, size of memory in bytes to allocate, 1000hex = 4096dec / bytes
+// INJECT, the address to allocate near if given
+// This forces Windows to allocate newmem within 2 Gigabytes of INJECT. In 64-bit assembly, a standard jmp instruction can only jump up to 2GB away. Telling alloc to stay close to INJECT ensures the jump won't fail.
+alloc(newmem,$1000,INJECT)
+
+// define empty labels for assembler
+// this label will hold our custom assembly instructions
+label(code)
+// this label will hold the return address used to return to regular game execution after we run our custom assembly
+label(return)
+
+
+// our new block of allocated memory, we call it a code cave
+// &gt; CPU step 2. our hook in step 1 replaces the games instructions with a jmp (jump) to the newmem block
+// this is where our assembly instructions go to be executed in-place of the games
+newmem:
+
+// as a placeholder execute the original game instructions inside our new memory block
+code:
+  mov [rdx+08],r8d // original instruction
+  mov [rdx+0C],r9d // original instruction
+  jmp return // jump out of the code cave back to normal game execution
+
+// newmem and code actually both store the same address, newmem is just the container and code stores the logic,
+// in more advanced scripts we can use newmem to store and allocate data, then use them in code
+// remember when a label is asigned (with label: or in a fuction like aobscanmodule()) it simply is given the current
+// memory cursors address, since there are no instructions to assemble between newmem and codes asignments,
+// no bytes are written into memory, so the address doesnt change / advance
+
+
+// patch the games assembly, add a hook to jump to our memory block (code:) above
+// &gt; CPU step 1. when the game reaches INJECT (RTV.exe+125FD10) it will jump (jmp) to newmem (the amemory address
+// of our allocated memory block), NOP stands for No Operation (opcode 0x90), the jmp instruction is 5 bytes but the original assembly
+// was 8 bytes so we add 3 nops as padding, 5 jmp + 3 nop = 8 bytes overwritten, matching the original 8 bytes (RTV.exe+125FD10 + RTV.exe+125FD14)
+INJECT: // address of our aob (RTV.exe+125FD10)
+  jmp newmem // overwrite INJECT with a 5 byte relative jmp
+  nop 3 // pad remaining 3 bytes with nops, now we cover RTV.exe+125FD10 and RTV.exe+125FD14 cleanly
+
+
+// save a label (return) for the return address (RTV.exe+125FD18),
+// since we set / record this label right after our hook / INJECT block
+// it stores the address right after it,
+// we use it when we need to jump back into regular game execution with 'jmp return' after we run our custom code / code cave
+return:
+
+
+// register the address of INJECT into cheat engines global symbol table for storage
+registersymbol(INJECT)
+
+
+
+// on deactivation in table
+[DISABLE]
+
+// restore original game assembly
+// target instructions at INJECT (RTV.exe+125FD10)
+// db / declate bytes, write the original 8 bytes back over the JMP + NOP hook
+INJECT:
+  db 44 89 42 08 44 89 4A 0C
+
+
+// unregisters INJECT from the global symbol table
+unregistersymbol(INJECT)
+
+// frees the 4,096 bytes of allocated memory back to windows
+dealloc(newmem)
+
+
+
+
+
+
+{
+// ORIGINAL CODE - INJECTION POINT: RTV.exe+125FD10
+
+RTV.exe+125FCE8: 48 C7 05 3D 3F 12 05 00 00 00 00  - mov qword ptr [RTV.exe+6383C30],00000000
+RTV.exe+125FCF3: BA 08 00 00 00                    - mov edx,00000008
+RTV.exe+125FCF8: E9 A3 69 95 03                    - jmp RTV.exe+4BB66A0
+RTV.exe+125FCFD: 90                                - nop
+RTV.exe+125FCFE: 90                                - nop
+RTV.exe+125FCFF: 90                                - nop
+RTV.exe+125FD00: 8B 41 40                          - mov eax,[rcx+40]
+RTV.exe+125FD03: C3                                - ret
+RTV.exe+125FD04: 90                                - nop
+RTV.exe+125FD05: 66 66 2E 0F 1F 84 00 00 00 00 00  - nop word ptr cs:[rax+rax+00000000]
+// ------------- INJECTING HERE (Start of 8-byte overwrite) -------------
+RTV.exe+125FD10: 44 89 42 08                       - mov [rdx+08],r8d
+RTV.exe+125FD14: 44 89 4A 0C                       - mov [rdx+0C],r9d
+// ------------- DONE INJECTING (End of 8-byte overwrite)   -------------
+RTV.exe+125FD18: C6 42 14 01                       - mov byte ptr [rdx+14],01
+RTV.exe+125FD1C: C3                                - ret
+RTV.exe+125FD1D: 00 00                             - add [rax],al
+RTV.exe+125FD1F: 00 44 89 42                       - add [rcx+rcx*4+42],al
+RTV.exe+125FD23: 08 44 89 4A                       - or [rcx+rcx*4+4A],al
+RTV.exe+125FD27: 0C C6                             - or al,-3A
+RTV.exe+125FD29: 42 14 01                          - adc al,01
+RTV.exe+125FD2C: C3                                - ret
+RTV.exe+125FD2D: 90                                - nop
+}
+</AssemblerScript>
+    </CheatEntry>
+  </CheatEntries>
+  <UserdefinedSymbols/>
+</CheatTable>
