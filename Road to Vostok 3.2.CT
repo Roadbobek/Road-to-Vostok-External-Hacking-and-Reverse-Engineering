@@ -164,10 +164,10 @@ code:
 // patch the games assembly, add a hook to jump to our memory block (code:) above
 // &gt; CPU step 1. when the game reaches INJECT (RTV.exe+125FD10) it will jump (jmp) to newmem (the amemory address
 // of our allocated memory block), NOP stands for No Operation (opcode 0x90), the jmp instruction is 5 bytes but the original assembly
-// was 8 bytes so we add 3 nops as padding, 5 jmp + 3 nop = 8 bytes overwritten, matching the original 8 bytes
+// was 8 bytes so we add 3 nops as padding, 5 jmp + 3 nop = 8 bytes overwritten, matching the original 8 bytes (RTV.exe+125FD10 + RTV.exe+125FD14)
 INJECT: // address of our aob (RTV.exe+125FD10)
-  jmp newmem // overwrite INJECT (RTV.exe+125FD10) with a 5 byte relative jmp
-  nop 3 // pad remaining 3 bytes with nops
+  jmp newmem // overwrite INJECT with a 5 byte relative jmp
+  nop 3 // pad remaining 3 bytes with nops, now we cover RTV.exe+125FD10 and RTV.exe+125FD14 cleanly
 
 
 // save a label (return) for the return address (RTV.exe+125FD18),
