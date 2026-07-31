@@ -163,3 +163,67 @@ of scanning for the value, finding out what writes to it, i get the same address
 i just realised that the difference between the 2 positions is only decimal 10 / 16 bytes, sometimes its at 'RTV.exe+125FD10' / '7FF6EA02FD10' but currently its at 'RTV.exe+125FD20' / '7FF6EA02FD20' the manual aob scan also failts because the bytes went from '4489420844894A0CC6421401C300' to '4489420844894A0CC6421401C390'.
 so we have a basic aob (array of bytes) scan for the auto assembler but what are we going to do with it, our goal is to get a root pointer we can use to traverse to all the other godot nodes, we have a pointer to that code now we just need to traverse up somehow.
 i asked google gemini about this and i have a pretty decent understanding on what is happening but i am way too tired to explain it right now im going to go do drugs or smth man idek anymore. Road to Vostok 4.2.CT .
+ok next day, so the assembly shifted 16 bytes, the difference is a 'C3 00' and 'C3 90', which c3 is ret (return), 90 is a nop (no operation) and 00 are just padding bytes. something i noticed in the dissasembler is that you can see there is some instructions like 2 mov instructions then a ret plus nop and it starts again.
+i read that 64 bit cpus run fastest when function start addresses are algined to 16 byte boundaries, addresses ending in 00, 10, 20, 30, etc. assuming the c3 in our aob signals the end of the function,
+the compiler inserted padding bytes (90 nops or 00 bytes) after the ret instruction to push the next function forward so it starts cleanly on a 16 byte boundary (0x125FD20 instead of 0x125FD10).
+so anything after a ret instruction isnt a part of our function and just includes garbage padding instructions/bytes, from now on we arent going to include anything after ret (C3) in our aob scans, and if we have to make it longer we will wildcard (??) any garbage if possible.
+but also if we add wilcards (??) to the end of our aob it will do nothing since it could be anything so it wont make a difference, we could go further ahead and include the next function for eg but what if the padding gets too big or small i dont think we can reliably wildcard all of it.
+this is what i am seeing right now, 
+RTV.exe+125FD00 - 8B 41 40              - mov eax,[rcx+40]
+RTV.exe+125FD03 - C3                    - ret 
+RTV.exe+125FD04 - 90                    - nop 
+RTV.exe+125FD05 - 66 66 2E 0F1F 84 00 00000000  - nop word ptr cs:[rax+rax+00000000]
+RTV.exe+125FD10 - B8 01000000           - mov eax,00000001   { 1 }
+RTV.exe+125FD15 - C3                    - ret 
+RTV.exe+125FD16 - 66 2E 0F1F 84 00 00000000  - nop word ptr cs:[rax+rax+00000000]
+// -------------
+RTV.exe+125FD20 - 44 89 42 08           - mov [rdx+08],r8d                                   <<< what we want
+RTV.exe+125FD24 - 44 89 4A 0C           - mov [rdx+0C],r9d
+// -------------
+RTV.exe+125FD28 - C6 42 14 01           - mov byte ptr [rdx+14],01   { 1 }
+RTV.exe+125FD2C - C3                    - ret 
+RTV.exe+125FD2D - 90                    - nop 
+RTV.exe+125FD2E - 66 90                 - nop 2
+RTV.exe+125FD30 - 44 89 42 10           - mov [rdx+10],r8d
+RTV.exe+125FD34 - C6 42 14 01           - mov byte ptr [rdx+14],01   { 1 }
+RTV.exe+125FD38 - C3                    - ret 
+RTV.exe+125FD39 - 90                    - nop 
+this is the extract from our cea aob example script,
+RTV.exe+125FCE8: 48 C7 05 3D 3F 12 05 00 00 00 00  - mov qword ptr [RTV.exe+6383C30],00000000
+RTV.exe+125FCF3: BA 08 00 00 00                    - mov edx,00000008
+RTV.exe+125FCF8: E9 A3 69 95 03                    - jmp RTV.exe+4BB66A0
+RTV.exe+125FCFD: 90                                - nop
+RTV.exe+125FCFE: 90                                - nop
+RTV.exe+125FCFF: 90                                - nop
+RTV.exe+125FD00: 8B 41 40                          - mov eax,[rcx+40]
+RTV.exe+125FD03: C3                                - ret
+RTV.exe+125FD04: 90                                - nop
+RTV.exe+125FD05: 66 66 2E 0F 1F 84 00 00 00 00 00  - nop word ptr cs:[rax+rax+00000000]
+// ------------- INJECTING HERE (Start of 8-byte overwrite) -------------
+RTV.exe+125FD10: 44 89 42 08                       - mov [rdx+08],r8d                        <<< what we want
+RTV.exe+125FD14: 44 89 4A 0C                       - mov [rdx+0C],r9d
+// ------------- DONE INJECTING (End of 8-byte overwrite)   -------------
+RTV.exe+125FD18: C6 42 14 01                       - mov byte ptr [rdx+14],01
+RTV.exe+125FD1C: C3                                - ret
+RTV.exe+125FD1D: 00 00                             - add [rax],al
+RTV.exe+125FD1F: 00 44 89 42                       - add [rcx+rcx*4+42],al
+RTV.exe+125FD23: 08 44 89 4A                       - or [rcx+rcx*4+4A],al
+RTV.exe+125FD27: 0C C6                             - or al,-3A
+RTV.exe+125FD29: 42 14 01                          - adc al,01
+RTV.exe+125FD2C: C3                                - ret
+RTV.exe+125FD2D: 90                                - nop
+we can see after c3/nop in the first extract we have a nop instruction and in the second we have some 00 padding bytes, even above both of them we see different padding.
+so to scan reliably we need to account for such changes, i can learn to go up the call stack and hook the caller function but for now im not sure if i should worry about this because i need to learn how to traverse up the scene tree.
+a little birdy told me that godot nodes hold a pointer to their parent but im not sure, im not sure if rdx is a conventional node.
+i read a lot of different things can shift the games memory addresses, even if its not godot a lot of apps like overlays and recording apps inject dlls, windows asld (address space layout randomization) moves the base address of RTV.exe to a new spot in memory on every launch, windows also aligns memory pages on 4KB / 16 byte boundaries, if section boundaries shift during PE loading (portable executable loading, .exe n .dll ect), relative offsets inside module space can move.
+in storage data is packed to save space, usually 512 byte blocks). in memory, windows aligns data to 4KB (4096 byte) memory pages. this means an offset inside RTV.exe on disk will never match the address offset when viewed in cheat engine.
+i decided to download ghidra and poke around with static analysis, i already found our instructions at location '14125fd20', the function shows as.
+void FUN_14125fd20(undefined8 param_1,longlong param_2,undefined4 param_3,undefined4 param_4)
+
+{
+  *(undefined4 *)(param_2 + 8) = param_3;			<<< horizontal screen size
+  *(undefined4 *)(param_2 + 0xc) = param_4;			<<< verticle screen size
+  *(undefined1 *)(param_2 + 0x14) = 1;				<<< some bool flag
+  return;
+}
+its 1 am again and i still dont know whats happening, Road to Vostok 4.3.CT ig...
