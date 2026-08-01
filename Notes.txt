@@ -227,3 +227,16 @@ void FUN_14125fd20(undefined8 param_1,longlong param_2,undefined4 param_3,undefi
   return;
 }
 its 1 am again and i still dont know whats happening, Road to Vostok 4.3.CT ig...
+you know, my problem is that i want to know everything. it gets to a point of getting in the way of my life.
+new day learning ghidra, going to navigation and clicking go to... or just pressing G, we go to address '14125fd20' which is our function, i bookmarked it as miscviewportfunc.
+rick clicking the function, clicking references, and clicking show call tree for FUN_14125fd20 shows no incoming or outgoing references so nothing is directly calling our function.
+again on the function in references, clicking show references to FUN_14125fd20, all you get is,
+145c3e648		addr FUN_14125fd20	DATA
+145fd2e58		_IMAGE_RUNTIME_FUNCTION_ENTRY 	DATA
+this means that we hit a windows metadata reference (specifically the .pdata section which windows uses to manage 64 bit crash handling and stack unwinding), im not 100% sure what that means and i dont think it 100% matters tbh.
+what this apparrently means, since there are no direct 'CALL' instructions in our xrefs the function is being called indirectly.
+instead of the game executing a direct call FUN_14125fd20, it is calling it through a vtable pointer, a function pointer table, or godots c++ reflection engine (ClassDB method bindings).
+i have a basic understanding of what a vtable or func ptr table is but no real experience, for now we are gonna move to dymaic analysis in cheat engine to overcome this roadblock. roadblock, sounds familiar...
+to see what calls our function in cheat engine, we need to go to the memory view, right click our function 'RTV.exe+125FD20' and click 'set hardware breakpoint' or just click f5.
+after changing the window size or toggleing between fullscreen and windowed mode or something similar we hit our breakpoint.
+now after we have hit our breakpoint we see a new window on the bottom right which has return addresses and paramaters, this is the stack trace window, when a function is called the cpu saves the parent (calling instructions) address right there so it knows where to return when the function finishes (ret).
