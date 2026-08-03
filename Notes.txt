@@ -243,3 +243,80 @@ now after we have hit our breakpoint we see a new window on the bottom right whi
 the list is supposed to be sorted from closest to furthest in terms of calling our function but the ones on top simply call other functions that call other functions and even if i go down half a dozen i dont get anywhere, the other ones call a register directly or a dereferenced register.
 it seams like it never ends, why cant it just give me the last call just before my function? all of them lead to seamingless meaningfull things, i go through a dozen calls, and it lands somewhere with no call or jmp in sight.
 i just analysed another cheat engine table and they are calling godots native engine functions, from the string processor all the way to making and overwriting new nodes with scripts. i think this is completely out of my abilities, i have played this game for 9 hours prior to this, now i have 129 hours. that is 120 hours of my life wasted. seeya later!
+i am unhappy with giving up so i am going to do what i do best and that is skid. i had google gemini analyse a cheat engine table for road to vostok made by cfemen and the first thing he does it find Engine::get_main_loop() which returns a pointer to SceneTree apparrently.
+Engine::get_main_loop() 
+       │
+       ▼
+  [ SceneTree ]  (The master controller of the game)
+       │
+       ▼
+ [ Root Viewport ]  (SceneTree + 0x290)
+       │
+       ├──► Player Node (Health, Inventory, Position)
+       ├──► Level / Map Nodes (Loot containers, Spawners)
+       ├──► UI Nodes (Menus, HUD)
+       ├──► Enemy Nodes (AI, Hitboxes)
+	   └──► Ect ect ect ect
+i didnt get that offset for root viewport so im am going to act like it is not there.
+In Godot, the MainLoop object returned by this function is actually an instance of SceneTree. The SceneTree is the master manager that runs every frame, renders every pixel, and processes every GDScript in the game.
+Inside SceneTree sits a pointer to the Root Viewport (the top-level node of the entire game).
+Because Godot organizes all games as a tree of Nodes, every single entity—your player, guns, enemies, loot containers, UI buttons—is a child or sub-child of that Root Viewport.
+this is a little extract from cfemens lua ce script,
+Engine_Get_Main_Loop = AOBScanModuleUnique("RTV.exe", "48 83 EC 28 E8 ...")
+local SceneTree = executeCodeEx(0, nil, Engine_Get_Main_Loop)
+local VP = readPointer(SceneTree + 0x290) -- Get Root Viewport
+ReadNodeChilds(VP) -- Search every node in the entire game for "Controller.gd"
+you can see so simply he gets the main loop / scenetree, then he has root viewport, then anything he so desires.
+maybe if i thought about this a bit more instead of self harming myself metaphorically, but now we know.
+ok i dont think doing this with assembly is efficient, after all cfemen used lua in ce. i want to do this pretty low level so my understanding is we can use windows api in c or cpp for eg and read plus write memory to the RTV.exe process but then we wouldnt be able to scan the instructions so easily,
+most externals hardcode offsets, after all thats one of the first things you learn. i am going to ask google gemini how i would go about getting a static pointer to the Engine::get_main_loop() function.
+apparrently most good externals do aob scanning, we could find the offset for Engine::get_main_loop() from the games base address but thats fragile and one tiny hotfix or patch will implode it. so aob scanning is still option namber huan.
+There is one critical x64 assembly quirk you need to know when scanning for global static pointers (like Godot's singletons) in C++: RIP-Relative Addressing.
+In 64-bit Windows binaries, static pointers aren't stored as absolute addresses inside assembly instructions. Instead, instructions use relative offsets from the Instruction Pointer (RIP):
+Code snippet:
+mov rax, [rip + 0x00123456]   ; Read global pointer sitting 0x123456 bytes ahead
+Why AOB Scanning + C++ Beats Everything
+When your C++ AOB scanner finds that mov rax, [rip + ...] instruction in memory, your C++ code can automatically calculate the static global address on the fly:
+Target Address = Instruction Address + Instruction Length + 4-byte Displacement Value
+This means even if the game updates, your C++ tool scans the AOB, calculates the RIP displacement automatically, and never breaks across game patches!
+not 100% confident with what that means but i am fine with that the main goal for now is to find Engine::get_main_loop() in ghidra.
+every time i open ghidra it wants to analyse RTV.exe again is it not saving or smth smh.
+reading the source code i found the function definition/implementation is inside 'platform/windows/os_windows.cpp':
+MainLoop *OS_Windows::get_main_loop() const {
+	return main_loop;
+}
+i dont think the declerations matter very much, inside core_bind.cpp i think it defines it but also one or two more also look like they define it,
+MainLoop *Engine::get_main_loop() const {
+	// Needs to remain in OS, since it's actually OS that interacts with it, but it's better exposed here
+	return ::OS::get_singleton()->get_main_loop();
+}
+but what matters is in 'void Engine::_bind_methods() {'
+we have,
+ClassDB::bind_method(D_METHOD("get_main_loop"), &Engine::get_main_loop);
+which is great because it gives us a string to search for in ghidra,
+quick note we also have
+	// NOTE: MainLoop is forward-declared in OS and should be included to use this.
+	virtual MainLoop *get_main_loop() const = 0;
+in the OS class in core/os/os.h,
+but okay we are going to search the 'get_main_loop' string in ghidra,
+in ghidra i hit
+'DEFINED	1451d599e	s_get_main_loop_1451d599e	ds "get_main_loop"	"get_main_loop"	string	14	true':
+- - - - - - - - 
+                             s_get_main_loop_1451d599e                       XREF[1]:     FUN_142f2d970:142f2e5ed(*)  
+       1451d599e 67 65 74        ds         "get_main_loop"
+                 5f 6d 61 
+                 69 6e 5f ...
+- - - - - - - - 
+looking at its xrefs / references you just get,
+- - - - - - - - 
+       142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
+                 aa 73 2a 02
+- - - - - - - - 
+quick notes,
+Microsoft x64 calling convention (CALL instruction),
+Parameter Passing and Registers
+Integer/Pointer Arguments: Passed left-to-right in registers RCX, RDX, R8, and R9. 
+Floating-Point Arguments: Passed left-to-right in registers XMM0, XMM1, XMM2, and XMM3. 
+Return Values: Integer values are returned in RAX, while floating-point values are returned in XMM0.
+The stack must be 16-byte aligned immediately before the CALL instruction since CALL pushes an 8-byte return address.
+ok so with out instruction 'LEA  R9,[s_get_main_loop_1451d599e]' where s_get_main_loop_1451d599e = "get_main_loop", we can see we are preparing R9 for a CALL instruction, the register R9 is the fourth and last int/ptr argument for a CALL in 64 bit windows.
