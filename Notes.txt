@@ -315,8 +315,117 @@ looking at its xrefs / references you just get,
 quick notes,
 Microsoft x64 calling convention (CALL instruction),
 Parameter Passing and Registers
-Integer/Pointer Arguments: Passed left-to-right in registers RCX, RDX, R8, and R9. 
-Floating-Point Arguments: Passed left-to-right in registers XMM0, XMM1, XMM2, and XMM3. 
+Integer/Pointer Arguments: Passed left-to-right to function, in registers RCX, RDX, R8, and R9. 
+Floating-Point Arguments: Passed left-to-right to function, in registers XMM0, XMM1, XMM2, and XMM3. 
 Return Values: Integer values are returned in RAX, while floating-point values are returned in XMM0.
 The stack must be 16-byte aligned immediately before the CALL instruction since CALL pushes an 8-byte return address.
 ok so with out instruction 'LEA  R9,[s_get_main_loop_1451d599e]' where s_get_main_loop_1451d599e = "get_main_loop", we can see we are preparing R9 for a CALL instruction, the register R9 is the fourth and last int/ptr argument for a CALL in 64 bit windows.
+so we can assume we are just about to call a func with a CALL instruction,
+       142f2e5da 45 31 c0        XOR        R8D,R8D
+       142f2e5dd 48 89 fa        MOV        RDX,RDI
+       142f2e5e0 b9 01 00        MOV        ECX,0x1
+                 00 00
+       142f2e5e5 c7 44 24        MOV        dword ptr [RSP + local_b0],0x0
+                 28 00 00 
+                 00 00
+       142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
+                 aa 73 2a 02
+       142f2e5f4 48 c7 44        MOV        qword ptr [RSP + local_b8],0x0
+                 24 20 00 
+                 00 00 00
+       142f2e5fd e8 be b2        CALL       FUN_142d898c0                                    undefined FUN_142d898c0()
+                 e5 ff
+- - - - - - - - 
+in this exctract
+we are calling the FUN_142d898c0 function which is at address 142d898c0 probably,
+we know our function call registers for int/ptrs are rcx, rdx, r8 and r9. i also learned that r8d and r9d are used to access the lower 32 bits of r8 and r9 registers.
+so here we are calling the FUN_142d898c0 function obviously at address 142d898c0, in the dissasembled pseudocode window it shows as 'FUN_142d898c0(1,puVar2,0,"get_main_loop",0,uVar5);',
+here we pass 6 arguments which is something i will have to look up in a sec.
+but just from the code extract we can see we set up r8d, rdx, and r9, which is not in order as that is arg3 (r8d), arg2 (rdx) and arg4 (r9), missing arg1 (rcx).
+i also just learned that ecx is used to access the lower 32 bits of rcx, so,
+we set up r8d, rdx, ecx, r9, which is not in order as that is arg3(r8d), arg2(rdx) arg1(ecx) arg4(r9). but we have all 4 aguments.
+here are the lines that set up each register,
+wait i just searched up what RSP is used for in the x64 windows calling convention since we use it twice and found out its the stack pointer,
+its the primary register used for referencing local variables and function arguments, rsp remains static throughout the function body (excluding prologue and epilogue), meaning all stack access is performed using rsp offsets. 
+RSP must be aligned to a 16-byte boundary immediately before a CALL instruction. Since the CALL instruction pushes an 8-byte return address, RSP will be 8-byte aligned (modulo 16) upon function entry.
+the caller must allocate at least 32 bytes (0x20) of "shadow space" on the stack by subtracting from rsp (eg: sub rsp, 32) before making a call, this space is reserved for the callee to optionally spill the first four register arguments (rcx, rdx, r8, r9), even if the function takes fewer arguments.
+spilling is the act of moving data from a register to memory,
+the callee (the function being called) might need to use rcx for a calculation but needs to preserve the original argument value for later.  since rcx is a "volatile" register, its value can be overwritten, the function copies (spills) the value from rcx into the shadow space on the stack.
+for eg the callee executes an instruction like mov [rsp+0x8], rdx. this copies the value from the rdx register into the memory slot reserved for it in the shadow space.
+example stack layour at function entry / call (before prologue),
+RSP + 0x00	Return Address	Pushed automatically by the CALL instruction. 
+RSP + 0x08	Shadow Space (RCX Home)	First 8 bytes of the 32-byte mandatory shadow space. 
+RSP + 0x10	Shadow Space (RDX Home)	Second 8 bytes. 
+RSP + 0x18	Shadow Space (R8 Home)	Third 8 bytes. 
+RSP + 0x20	Shadow Space (R9 Home)	Fourth 8 bytes. 
+RSP + 0x28	5th Argument	First stack-passed argument (if present). 
+RSP + 0x30	6th Argument	Second stack-passed argument (if present).
+RSP + 0x38+	Locals / Saved Regs	Local variables and non-volatile registers saved by the callee in its prologue, so pretty much arg7, arg8, ect.
+we see rsp is also used to pass extra arguments, that explains why our pseudo-code function passes 6, 'FUN_142d898c0(1,puVar2,0,"get_main_loop",0,uVar5);'.
+Inside the Function Body (After Prologue, e.g., sub rsp, 0x30)
+[RSP + 0x70] : 8th Argument
+[RSP + 0x68] : 7th Argument
+[RSP + 0x60] : 6th Argument
+[RSP + 0x58] : 5th Argument
+[RSP + 0x38 - 0x50] : Shadow Space
+[RSP + 0x30] : Return Address
+[RSP + 0x20 - 0x28] : Saved Non-Volatile Registers (e.g., RBX, RSI)
+[RSP + 0x00 - 0x18] : Local Variables           <-- Active RSP
+btw if u dont know the stack is a dedicated region in memory used as a last-ln first-out (LIFO) data structure for temporary storage.
+ok so going back to all the instructions prior to our function call,
+- - - - - - - - 
+       142f2e5da 45 31 c0        XOR        R8D,R8D
+       142f2e5dd 48 89 fa        MOV        RDX,RDI
+       142f2e5e0 b9 01 00        MOV        ECX,0x1
+                 00 00
+       142f2e5e5 c7 44 24        MOV        dword ptr [RSP + local_b0],0x0
+                 28 00 00 
+                 00 00
+       142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
+                 aa 73 2a 02
+       142f2e5f4 48 c7 44        MOV        qword ptr [RSP + local_b8],0x0
+                 24 20 00 
+                 00 00 00
+       142f2e5fd e8 be b2        CALL       FUN_142d898c0                                    undefined FUN_142d898c0()
+                 e5 ff
+- - - - - - - -
+in raw instructions + hex that is,
+- - - - - - - -
+       142f2e5da 45 31 c0        XOR        R8D,R8D
+       142f2e5dd 48 89 fa        MOV        RDX,RDI
+       142f2e5e0 b9 01 00        MOV        ECX,0x1
+                 00 00
+       142f2e5e5 c7 44 24        MOV        dword ptr [RSP + 28],0
+                 28 00 00 
+                 00 00
+       142f2e5ed 4c 8d 0d        LEA        R9,[1451d599e]                   = "get_main_loop"
+                 aa 73 2a 02
+       142f2e5f4 48 c7 44        MOV        qword ptr [RSP + 20],0
+                 24 20 00 
+                 00 00 00
+       142f2e5fd e8 be b2        CALL       FUN_142d898c0                                    undefined FUN_142d898c0()
+                 e5 ff
+- - - - - - - -
+i think these are the passed arguments for FUN_142d898c0 in passing order,
+142f2e5e0 b9 01 00        MOV        ECX,0x1
+142f2e5dd 48 89 fa        MOV        RDX,RDI
+142f2e5da 45 31 c0        XOR        R8D,R8D
+142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e / "get_main_loop"]
+142f2e5f4 48 c7 44        MOV        qword ptr [RSP + local_b8 / hex20],hex0
+142f2e5e5 c7 44 24        MOV        dword ptr [RSP + local_b0 / hex28],hex0
+we know from the pseudo-code the func has 6 passed args and we can now see them being resolved from the stack pointer, rsp.
+looking at the pseudo-code again, 'FUN_142d898c0(1,puVar2,0,"get_main_loop",0,uVar5);',
+it is worth noting that this function is called a lot of times it seams to be called for every classdb bound method, for eg,
+FUN_142d898c0(1,puVar2,0,"get_version_info",0,uVar5);
+FUN_142d898c0(1,puVar2,0,"get_author_info",0,uVar5);
+FUN_142d898c0(1,puVar2,0,"get_copyright_info",0,uVar5);
+FUN_142d898c0(1,puVar2,0,"get_donor_info",0,uVar5);
+looking through all the calls around ours, the probably boolean arguments dont change and neither does puVar2 and uVar5,
+every time its the same except for our string we pass.
+can i tell you a secret, i genuinely forgot what we are doing here i dont remember the next step so i am going to pretend like i do and do some bs.
+this function is probably something to do with resolving the right function to call from an indirect call. idk.
+when ghidra decompiles the assembly into the pseudo-code and cannot resolve variable names it uses a naming convention that prefixs its data type.
+from that we know, 
+uVar5 = unsigned integer / uint
+puVar2 = pointer to an unsigned int / uint *
+and well s_get_main_loop_1451d599e is a string ("get_main_loop") / char * / pointer to a character/char array.
