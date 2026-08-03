@@ -428,4 +428,24 @@ when ghidra decompiles the assembly into the pseudo-code and cannot resolve vari
 from that we know, 
 uVar5 = unsigned integer / uint
 puVar2 = pointer to an unsigned int / uint *
-and well s_get_main_loop_1451d599e is a string ("get_main_loop") / char * / pointer to a character/char array.
+and well s_get_main_loop_1451d599e is a string ("get_main_loop") / pointer to a character (char) array / char *
+im not sure what to do next, i remember our goal was to find the function so we can call it in our external but im not sure if we need to be calling the func feinition or decleration but i think we need to find the decleration,
+but since this code is compiled i think the compiler will just have one place for it not a defintion and decleration after all. logically thinking about it and looking it up to confirm the definition is only used during compilation,
+all that gets compiled and linked into the binary (RTV.exe) is the function definition, which is the actual functions code, so that function will only be in one part of our program, so we just need to find that address.
+so our goal is to find the actual function, we are doing it here but im curious if i could just compile that function on its own and compare it with ghidra, but i wont do that cause it seems like cheating if possible.
+this is our function definition from the godot 4.7 source code, inside of platform/windows/os_windows.cpp,
+MainLoop *OS_Windows::get_main_loop() const {
+	return main_loop;
+}
+i dont remember why we were examining that function ig because it had the string.
+oh yeah we found 'ClassDB::bind_method(D_METHOD("get_main_loop"), &Engine::get_main_loop);' previously and we were searching that string, we found it here,
+- - - - - - - -
+                             s_get_main_loop_1451d599e                       XREF[1]:     FUN_142f2d970:142f2e5ed(*)  
+       1451d599e 67 65 74        ds         "get_main_loop"
+                 5f 6d 61 
+                 69 6e 5f 
+- - - - - - - -
+and we can see theres only 1 reference which is already well known to us,
+- - - - - - - -
+       142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
+- - - - - - - -
