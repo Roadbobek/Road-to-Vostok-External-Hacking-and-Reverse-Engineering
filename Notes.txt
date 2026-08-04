@@ -449,3 +449,32 @@ and we can see theres only 1 reference which is already well known to us,
 - - - - - - - -
        142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
 - - - - - - - -
+next day, the string gets 1 hit and it has 1 reference/use, the hit is the actual string being stored, in the source code the string is directly used as a argument in the function but after compilation and linking into the portable executable unlike the code/instructions that get stored in .text,
+strings typically are stored in a data section here we find it in .rdata, so now we know that
+       142f2e5fd e8 be b2        CALL       FUN_142d898c0                                    undefined FUN_142d898c0()
+and its set up is
+ClassDB::bind_method(D_METHOD("get_main_loop"), &Engine::get_main_loop);
+- - - - - - - -
+the reason that function seamingly has 2 paramaters but we pass 6 in the CALL instruction is because D_METHOD() expands into its default arguments and stuff like that.
+now we found that function in the binary, but im not sure how this helps us, im not fully fully sure what that function even does in the source code.
+ok thinking about it with a few more braincells you can see that the second argument passed is '&Engine::get_main_loop' which is a pointer to the get_main_loop member function (method) of the Engine class.
+the way i understand it is that get_main_loop() is defined differently for each operating system for eg compiling on windows uses the code fromplatform/windows/os_windows.cpp,
+MainLoop *OS_Windows::get_main_loop() const {
+	return main_loop;
+}
+most of the time get_main_loop() is called in the source code its called with OS::get_singleton()->get_main_loop() directly, but in the bind_method() function its passed as a member function of the Engine class,
+i think it is passing this which seems to be helper function wrapper of some sorts to make the function accesable through the Engine class for some reason i dont care or worry about at all, this could actually be a wrapper for the engine scripting itself idk.
+MainLoop *Engine::get_main_loop() const {
+	// Needs to remain in OS, since it's actually OS that interacts with it, but it's better exposed here
+	return ::OS::get_singleton()->get_main_loop();
+}
+so that calls
+	// NOTE: MainLoop is forward-declared in OS and should be included to use this.
+	virtual MainLoop *get_main_loop() const = 0;
+inside the OS class in core/os/os.h, this is just a virtual function that doesnt implement anything so the actual implementation in the end is done specifically for every os, for eg like we saw with windows.
+looking up what the ClassDB::bind_method() does, "The ClassDB::bind_method() function registers a C++ method to Godot's ClassDB (the engine's internal reflection database), making it accessible to the scripting API. It creates a static wrapper function, known as the "ptrcall" form, which acts as an efficient generic glue layer by casting raw pointers to the correct instance and argument types.",
+which makes sense at the start im not sure what the end means but i dont really need to now do i.
+our goal has been to get the function implementation/definition so we can run it externally, we know that in the "ClassDB::bind_method(D_METHOD("get_main_loop"), &Engine::get_main_loop);" function call we pass a pointer to our get_main_loop functin wrapper inside the Engine class,
+(Engine::get_main_loop() is a thin wrapper that queries OS::get_singleton()->get_main_loop(), which resolves to OS_Windows::get_main_loop() on windows)
+(ClassDB is a scripting bridge for the engine, bind_method wraps c++ functions into MethodBind objects so godots gdscript runtime can reflect and call them at runtime)
+since we pass it as an argument we must set it up in one the the registers, so finding that register is our goal.
