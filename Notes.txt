@@ -656,3 +656,10 @@ its writing a pointer to a function, just before that line we have 'LEA  RAX,[FU
                  00 00 00 00
 here we are writing 0, possibly a bool false, into wtvr rdi/puvar2 is with a 52 byte offset, dword tells us its 32 bits / 4 bytes so its probably clearing something and not a boolean.
 then we have another function using our variable/register as a paramater and thats it.
+i think i was wrong about the 'puVar2 = (undefined8 *)FUN_1428f6de0(0x58,&DAT_1451d4237);' line,
+just looking at this line you can see it is running the FUN_1428f6de0 function with hex58 as its first paramater and then the address of some data / a pointer to it.
+(undefined8 *) at the start actually tells us what it returns, so it returns a pointer / memory address to an 8 byte undefined data type.
+peaking into the dissasembled pseudo code we see it returns '*pvVar1', which is a pointer, 'pvVar1 = malloc(param_1);' is allocating memory with the amount being the first argument, which was hex58, 88 bytes, the address/pointer to our new memory is stored in the pvVar1 variable which is a pointer.
+then it checks if pvVar1 isnt null, if its not null the memory was successfuly allocated and it returns pvVar1, and if it is null it throws a error, the string is the error that would get written to console. this function seems like a simple malloc function wrapper with some error handling.
+the returning pvVar1 variable which is a pointer to the newly allocated memory is what puVar2 is assigned. forgive me im retarded and my head hurts all day.
+when i was looking things up a lot of this stuff checks out with how a vtable works but i dont know much about those, it is some sort of object or class, since we are writing a 2 pointers to functions so it has 2 methods.
