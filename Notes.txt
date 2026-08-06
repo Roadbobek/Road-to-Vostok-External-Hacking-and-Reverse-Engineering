@@ -521,4 +521,125 @@ also if we double click our function FUN_142d898c0, which is "ClassDB::bind_meth
 FUN_142d898c0(undefined4 param_1,longlong *param_2,char param_3,undefined8 param_4,
              undefined8 param_5,int param_6)
 and we can see the second argument which would be our second instruction (rdx) is a pointer to a longlong (longlong *param_2) which is a 64bit/8byte value,
-i did hear that representing it as a longlong is ghidras default way of representing a 64 bit pointer when it doesnw know the underlying struct or class layout.
+i did hear that representing it as a longlong is ghidras default way of representing a 64 bit pointer when it doesnt know the underlying struct or class layout.
+next day i just woke up havent even left my room yet, it would make sense for that to be a pointer since its 64 bits / 8 bytes long anyways independant of its data type.
+previosuly we traced that rdx gets its value from rdi which gets its value from rax, before we checked if rdi did anything special that could clue us in and we didnt get anything, but we didnt check rax which rdi gets its value from,
+and when checking what rax does in the windows x64 calling convention we find out that the rax register is primarily used to return a scalar integer or pointer values (up to 64 bits) from a function, it is also a volatile (caller-saved) register meaning functions are free to modify it, and callers must not assume its value persists after a function call.
+after a function call it holds the resulting return value for standard integer types, pointers, and 64-bit vectors (__m64), it does not handle floating-point return values (floats, doubles, __m128) are returned in xmm0, not rax.
+in the context of the windows x64 calling convention, a scalar integer refers to a single numeric value such as an int, long, or __int64 that fits within 64 bits.
+so very likely, rdx gets its value from rdi and rdi gets its value from rax, we see in this little extract,
+       142f2e570 e8 6b 88        CALL       FUN_1428f6de0                                    undefined FUN_1428f6de0()
+                 9c ff
+       142f2e575 48 89 c1        MOV        RCX,RAX
+       142f2e578 48 89 c7        MOV        RDI,RAX
+       142f2e57b e8 10 40        CALL       FUN_142d92590                                    undefined FUN_142d92590()
+                 e6 ff
+       142f2e580 48 8d 05        LEA        RAX,[PTR_FUN_145be68c0]                          = 1447894b0
+                 39 83 cb 02
+       142f2e587 ba 01 00        MOV        EDX,0x1
+                 00 00
+       142f2e58c 48 89 f9        MOV        RCX,RDI
+       142f2e58f 48 89 07        MOV        qword ptr [RDI],RAX=>PTR_FUN_145be68c0           = 1447894b0
+       142f2e592 48 8d 05        LEA        RAX,[FUN_142f20090]
+                 f7 1a ff ff
+       142f2e599 48 89 47 48     MOV        qword ptr [RDI + 0x48],RAX=>FUN_142f20090
+       142f2e59d 48 c7 47        MOV        qword ptr [RDI + 0x50],0x0
+                 50 00 00 
+                 00 00
+       142f2e5a5 e8 b6 3d        CALL       FUN_142d92360                                    undefined FUN_142d92360()
+                 e6 ff
+       142f2e5aa ba 01 00        MOV        EDX,0x1
+                 00 00
+       142f2e5af 48 89 f9        MOV        RCX,RDI
+here on the botton rcx get its value from rdi which gets its value from rax here,
+       142f2e578 48 89 c7        MOV        RDI,RAX
+and we know in the windows x6 calling convention rax holds the integer returned by a function, what i think is happening is that RAX gets its value which is the pointer for our get_main_loop function wrapper (passed as &Engine::get_main_loop in source code) from the FUN_1428f6de0 function.
+if the function returns multiple it can allocate in other places in memory and could return a success code or a pointer to it in rax but most functions only return one so lets not worry abt that.
+in the pseudo code window when highlighting the FUN_1428f6de0 call it shows as, 'puVar2 = (undefined8 *)FUN_1428f6de0(0x58,&DAT_1451d4237);' so we can see that lines up with what we saw before, so that function gives us puVar2 which is RDX in the end.
+we also see it is undefined8 so it is a 8 byte / 64 bit long undefined data type which is good.
+but i just realised that rdi is written to after this also, looking at this full machine and pseudo code extract,
+- - - - - - - -
+       142f2e570 e8 6b 88        CALL       FUN_1428f6de0                                    undefined FUN_1428f6de0()
+                 9c ff
+       142f2e575 48 89 c1        MOV        RCX,RAX
+       142f2e578 48 89 c7        MOV        RDI,RAX
+       142f2e57b e8 10 40        CALL       FUN_142d92590                                    undefined FUN_142d92590()
+                 e6 ff
+       142f2e580 48 8d 05        LEA        RAX,[PTR_FUN_145be68c0]                          = 1447894b0
+                 39 83 cb 02
+       142f2e587 ba 01 00        MOV        EDX,0x1
+                 00 00
+       142f2e58c 48 89 f9        MOV        RCX,RDI
+       142f2e58f 48 89 07        MOV        qword ptr [RDI],RAX=>PTR_FUN_145be68c0           = 1447894b0
+       142f2e592 48 8d 05        LEA        RAX,[FUN_142f20090]
+                 f7 1a ff ff
+       142f2e599 48 89 47 48     MOV        qword ptr [RDI + 0x48],RAX=>FUN_142f20090
+       142f2e59d 48 c7 47        MOV        qword ptr [RDI + 0x50],0x0
+                 50 00 00 
+                 00 00
+       142f2e5a5 e8 b6 3d        CALL       FUN_142d92360                                    undefined FUN_142d92360()
+                 e6 ff
+       142f2e5aa ba 01 00        MOV        EDX,0x1
+                 00 00
+       142f2e5af 48 89 f9        MOV        RCX,RDI
+       142f2e5b2 e8 89 3d        CALL       FUN_142d92340                                    undefined FUN_142d92340()
+                 e6 ff
+       142f2e5b7 31 d2           XOR        EDX,EDX
+       142f2e5b9 48 89 f9        MOV        RCX,RDI
+       142f2e5bc e8 2f 3f        CALL       FUN_142d924f0                                    undefined FUN_142d924f0()
+                 e6 ff
+       142f2e5c1 c7 47 34        MOV        dword ptr [RDI + 0x34],0x0
+                 00 00 00 00
+       142f2e5c8 e8 93 e6        CALL       FUN_1442dcc60                                    undefined FUN_1442dcc60()
+                 3a 01
+       142f2e5cd 48 8d 4f 18     LEA        RCX,[RDI + 0x18]
+       142f2e5d1 48 8d 50 08     LEA        RDX,[RAX + 0x8]
+       142f2e5d5 e8 86 f4        CALL       FUN_142ddda60                                    undefined FUN_142ddda60()
+                 ea ff
+       142f2e5da 45 31 c0        XOR        R8D,R8D
+       142f2e5dd 48 89 fa        MOV        RDX,RDI
+       142f2e5e0 b9 01 00        MOV        ECX,0x1
+                 00 00
+       142f2e5e5 c7 44 24        MOV        dword ptr [RSP + local_b0],0x0
+                 28 00 00 
+                 00 00
+       142f2e5ed 4c 8d 0d        LEA        R9,[s_get_main_loop_1451d599e]                   = "get_main_loop"
+                 aa 73 2a 02
+       142f2e5f4 48 c7 44        MOV        qword ptr [RSP + local_b8],0x0
+                 24 20 00 
+                 00 00 00
+       142f2e5fd e8 be b2        CALL       FUN_142d898c0                                    undefined FUN_142d898c0()
+                 e5 ff
+- - - - - - - -
+  puVar2 = (undefined8 *)FUN_1428f6de0(0x58,&DAT_1451d4237);
+  FUN_142d92590(puVar2);
+  *puVar2 = &PTR_FUN_145be68c0;
+  puVar2[9] = FUN_142f20090;
+  puVar2[10] = 0;
+  FUN_142d92360(puVar2,1);
+  FUN_142d92340(puVar2,1);
+  FUN_142d924f0(puVar2,0);
+  *(undefined4 *)((longlong)puVar2 + 0x34) = 0;
+  lVar3 = FUN_1442dcc60();
+  FUN_142ddda60(puVar2 + 3,lVar3 + 8);
+  uVar5 = uVar5 & 0xffffffff00000000;
+  FUN_142d898c0(1,puVar2,0,"get_main_loop",0,uVar5);
+- - - - - - - -
+from top to bottom 'puVar2 = (undefined8 *)FUN_1428f6de0(0x58,&DAT_1451d4237);' ([CALL  FUN_1428f6de0] + [MOV  RDI,RAX]) originally sets puVar2/RDI,
+but puVar2 isnt just a pointer to our function wrapper, further down we write to different parts of it so it just be a bigger data structure,
+0x58 in the previous function is suspicious since that is 88 bytes which is a lot of data to be just a simple pointer to our function wrapper, that should be just 8 bytes.
+when further dissasembling FUN_1428f6de0 we see 'void * FUN_1428f6de0(size_t param_1)' it has no return value and its only paramater is of size_t, which is obviously 0x58/58 hex.
+the code for it is quite short it is just,
+{
+  void *pvVar1;
+  
+  pvVar1 = malloc(param_1);
+  if (pvVar1 != (void *)0x0) {
+    return pvVar1;
+  }
+  FUN_142e49250("alloc_static","core/os/memory.cpp",0x72,"Parameter \"mem\" is null.",0,0);
+  return (void *)0x0;
+}
+we see here that it allocates param_1 (58 hex / 88 bytes) in memory, so we know that puVar2 is 88 bytes big.
+FUN_142d92590(puVar2); is running some function on puVar2.
+*puVar2 = &PTR_FUN_145be68c0; is retreiving the memory address of the PTR_FUN_145be68c0 variable which is probably a pointer to a function after all it says ptr_func, then it writes it to puVar2, puVar2 is still on the same address in memory but now it holds that function pointer.
