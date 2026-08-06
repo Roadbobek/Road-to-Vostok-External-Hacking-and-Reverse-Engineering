@@ -553,7 +553,7 @@ so very likely, rdx gets its value from rdi and rdi gets its value from rax, we 
        142f2e5af 48 89 f9        MOV        RCX,RDI
 here on the botton rcx get its value from rdi which gets its value from rax here,
        142f2e578 48 89 c7        MOV        RDI,RAX
-and we know in the windows x6 calling convention rax holds the integer returned by a function, what i think is happening is that RAX gets its value which is the pointer for our get_main_loop function wrapper (passed as &Engine::get_main_loop in source code) from the FUN_1428f6de0 function.
+and we know in the windows x64 calling convention rax holds the integer returned by a function, what i think is happening is that RAX gets its value which is the pointer for our get_main_loop function wrapper (passed as &Engine::get_main_loop in source code) from the FUN_1428f6de0 function.
 if the function returns multiple it can allocate in other places in memory and could return a success code or a pointer to it in rax but most functions only return one so lets not worry abt that.
 in the pseudo code window when highlighting the FUN_1428f6de0 call it shows as, 'puVar2 = (undefined8 *)FUN_1428f6de0(0x58,&DAT_1451d4237);' so we can see that lines up with what we saw before, so that function gives us puVar2 which is RDX in the end.
 we also see it is undefined8 so it is a 8 byte / 64 bit long undefined data type which is good.
@@ -642,12 +642,12 @@ the code for it is quite short it is just,
 }
 we see here that it allocates param_1 (58 hex / 88 bytes) in memory, so we know that puVar2 is 88 bytes big.
 FUN_142d92590(puVar2); is running some function with puVar2 as the argument.
-'*puVar2 = &PTR_FUN_145be68c0;' is retreiving the memory address of the PTR_FUN_145be68c0 variable which is probably a pointer to a function after all it says ptr_func, then it writes it to puVar2, puVar2 is still on the same address in memory but now it holds that function pointer.
+'*puVar2 = &PTR_FUN_145be68c0;' is retreiving the memory address of the PTR_FUN_145be68c0 variable which is probably a pointer to a function after all it says ptr_func, then it writes it to puVar2 in memory, puVar2 is still on the same address in memory but now it holds that function pointer, this isnt redefining it because we dereference it into its memory addess with * (*puVar2).
 that isnt going to take up the entire 88 bytes, next we have 'puVar2[9] = FUN_142f20090;', which is
        142f2e599 48 89 47 48     MOV        qword ptr [RDI + 0x48],RAX=>FUN_142f20090
 which isss
        142f2e599 48 89 47 48     MOV        	qword ptr [RDI + 0x48],	RAX
-this code is writing to the presumably 9th part of our object or whatever it is that puVar2 points to in memory, its a offset of hex 48 which is a offset of 30 bytes.
+this code is writing to the presumably 9th part of our object or whatever it is that puVar2 points to in memory, its a offset of hex 48 which is a offset of 72 bytes.
 its writing a pointer to a function, just before that line we have 'LEA  RAX,[FUN_142f20090]' / 'LEA  RAX,[0x142f20090]', rax is just a pointer to the FUN_142f20090 function, and thats whats being passed into rdi [9] / +30bytes.
 'puVar2[10] = 0;' is just writing 0 to the 10th position in the thingabob puVar2 is pointing to, it is an offset of hex50 which is 80 bytes, could be used as a boolean false.
 3 more funcs run with puVar2 as one of their arguments.
@@ -663,3 +663,29 @@ peaking into the dissasembled pseudo code we see it returns '*pvVar1', which is 
 then it checks if pvVar1 isnt null, if its not null the memory was successfuly allocated and it returns pvVar1, and if it is null it throws a error, the string is the error that would get written to console. this function seems like a simple malloc function wrapper with some error handling.
 the returning pvVar1 variable which is a pointer to the newly allocated memory is what puVar2 is assigned. forgive me im retarded and my head hurts all day.
 when i was looking things up a lot of this stuff checks out with how a vtable works but i dont know much about those, it is some sort of object or class, since we are writing a 2 pointers to functions so it has 2 methods.
+presumably one of the function pointers is pointing to the function we want, the get_main_loop function wrapper (passed as &Engine::get_main_loop in source code),
+double clicking the first one, which is a pointer to a function (PTR_FUN_145be68c0) just takes us to where it is in the binary, not the actual function, it does have 6 references, xrefs. so lets search the address manually, '145be68c0'.
+when i press g, and type 145be68c0 into the goto address window it just goes to PTR_FUN_145be68c0, but PTR_FUN_145be68c0 is a pointer to a function? oh i guess its different its right under it. when i select PTR_FUN_145be68c0 it also highlights FUN_1447894b0.
+with ghidra if you have a function it normally is FUN_address, with the function pointer i just didnt think that the address in PTR_FUN_address would be the address of it in the binary because im used to having it be on the same address.
+going to the function it is just 'MOV EAX,0x18' then 'RET', it literally dissasembles into
+
+undefined8 FUN_1447894b0(void)
+
+{
+  return 0x18;
+}
+...
+the second one, FUN_142f20090 from 'puVar2[9] = FUN_142f20090;', it just dissasembles into,
+
+void FUN_142f20090(void)
+
+{
+  longlong *plVar1;
+  
+  plVar1 = (longlong *)FUN_1428f8ef0();
+                    /* WARNING: Could not recover jumptable at 0x000142f200aa. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (**(code **)(*plVar1 + 0x1e8))(plVar1,*(code **)(*plVar1 + 0x1e8));
+  return;
+}
+the function call FUN_1428f8ef0, inside it just returns a pointer to some data.
