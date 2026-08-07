@@ -689,3 +689,5 @@ void FUN_142f20090(void)
   return;
 }
 the function call FUN_1428f8ef0, inside it just returns a pointer to some data.
+some notes on direct and indirect function calls and vtables,
+yo i have genuinely developed a migrane doing this i am flinching like an abused puppy at every little bird chirp im taking a short break.
