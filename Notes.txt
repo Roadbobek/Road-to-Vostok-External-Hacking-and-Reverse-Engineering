@@ -668,15 +668,16 @@ double clicking the first one, which is a pointer to a function (PTR_FUN_145be68
 when i press g, and type 145be68c0 into the goto address window it just goes to PTR_FUN_145be68c0, but PTR_FUN_145be68c0 is a pointer to a function? oh i guess its different its right under it. when i select PTR_FUN_145be68c0 it also highlights FUN_1447894b0.
 with ghidra if you have a function it normally is FUN_address, with the function pointer i just didnt think that the address in PTR_FUN_address would be the address of it in the binary because im used to having it be on the same address.
 going to the function it is just 'MOV EAX,0x18' then 'RET', it literally dissasembles into
-
+- - - - - - - -
 undefined8 FUN_1447894b0(void)
 
 {
   return 0x18;
 }
 ...
+- - - - - - - -
 the second one, FUN_142f20090 from 'puVar2[9] = FUN_142f20090;', it just dissasembles into,
-
+- - - - - - - -
 void FUN_142f20090(void)
 
 {
@@ -688,6 +689,112 @@ void FUN_142f20090(void)
   (**(code **)(*plVar1 + 0x1e8))(plVar1,*(code **)(*plVar1 + 0x1e8));
   return;
 }
+- - - - - - - -
 the function call FUN_1428f8ef0, inside it just returns a pointer to some data.
+if ghidra prefixes a variable with DAT i think it couldnt resolve the data type.
+undefined8 FUN_1428f8ef0(void)
+
+{
+  return DAT_1463906e8;
+}
+it returns an 8 byte / 64 bit value, a longlong. meaning it is very likely a memory address thats what i am going to assume.
 some notes on direct and indirect function calls and vtables,
 yo i have genuinely developed a migrane doing this i am flinching like an abused puppy at every little bird chirp im taking a short break.
+ok im back i dont feel well but ill feel better if i do this,
+when the compiler knows the exact address of the function at compile time. in assembly it writes a direct instruction like CALL 0x140001000, this is a direct call, a normal function.
+in c++, a class can let child classes override its methods, because the program doesnt know until runtime which version of the method to call (the parent or childs), the compiler cannot hardcode a fixed address.
+a vtable (virtual function table) is that directory list, its an array of function pointers sitting in memory.
+in the executable, vtables are stored in the static data segment (often .data or .rdata section) of the executable. because vtables are static arrays of function pointers that do not change at runtime, they are allocated in memory-mapped sections of the process address space rather than on the heap or stack. 
+each object instance of a polymorphic class (a class containing at least one virtual function) contains a hidden vptr (vtable pointer / pointer to its vtable), typically at offset zero, which points to the specific vtable for its most derived class, allowing the runtime to resolve virtual method calls via indirect function calls.
+compilers almost always assign the vptr near the very top of the constructor, typically at offset 0, right after the objects base memory address is established and before setting up individual member variables.
+focusing on FUN_142f20090, we see it used plVar1 on almost every line, we know it gets its value from the FUN_1428f8ef0 function which returns DAT_1463906e8, so plVar1 = DAT_1463906e8, DAT_1463906e8 is 8 bytes / 64 bits.
+looking at its xrefs it has 4 reads and 2 writes, from any xref we can see its used as 'qword ptr [DAT_1463906e8]' qword means 8 bytes / 64 bits, ptr means its a pointer (memory address) and [] dereferences the value at the memory address the DAT_1463906e8 pointer points to.
+now looking at the writes, the second write just nulls / zeros it out, 'MOV qword ptr [DAT_1463906e8],0x0'.
+but the first write is very interesting,
+- - - - - - - -
+       1428f9ae8 48 89 1d        MOV        qword ptr [DAT_1463906e8],RBX                    = ??
+                 f9 6b a9 03
+- - - - - - - -
+we see we copy rbx into our pointed to memory region (1463906e8), and looking up right above we see,
+- - - - - - - -
+       1428f9a57 66 89 4b 40     MOV        word ptr [RBX + 0x40],CX
+       1428f9a5b b9 08 00        MOV        ECX,0x8
+                 00 00
+       1428f9a60 48 89 83        MOV        qword ptr [RBX + 0xa8],RAX
+                 a8 00 00 00
+       1428f9a67 48 89 83        MOV        qword ptr [RBX + 0xe0],RAX
+                 e0 00 00 00
+       1428f9a6e 48 89 83        MOV        qword ptr [RBX + 0x108],RAX
+                 08 01 00 00
+       1428f9a75 66 44 89        MOV        word ptr [RBX + 0x118],R8W
+                 83 18 01 
+                 00 00
+       1428f9a7d 0f 11 43 58     MOVUPS     xmmword ptr [RBX + 0x58],XMM0
+       1428f9a81 0f 11 4b 78     MOVUPS     xmmword ptr [RBX + 0x78],XMM1=>PTR_FUN_145c1f400 = 143db69d0
+       1428f9a85 0f 11 83        MOVUPS     xmmword ptr [RBX + 0x88],XMM0
+                 88 00 00 00
+       1428f9a8c 0f 11 83        MOVUPS     xmmword ptr [RBX + 0x98],XMM0
+                 98 00 00 00
+       1428f9a93 0f 11 83        MOVUPS     xmmword ptr [RBX + 0xb8],XMM0
+                 b8 00 00 00
+       1428f9a9a 0f 11 83        MOVUPS     xmmword ptr [RBX + 0xc8],XMM0
+                 c8 00 00 00
+       1428f9aa1 0f 11 83        MOVUPS     xmmword ptr [RBX + 0xe8],XMM0
+                 e8 00 00 00
+       1428f9aa8 0f 11 83        MOVUPS     xmmword ptr [RBX + 0xf8],XMM0
+                 f8 00 00 00
+       1428f9aaf c6 43 42 00     MOV        byte ptr [RBX + 0x42],0x0
+       1428f9ab3 48 c7 43        MOV        qword ptr [RBX + 0x48],0x0
+                 48 00 00 
+                 00 00
+       1428f9abb c6 43 50 00     MOV        byte ptr [RBX + 0x50],0x0
+       1428f9abf 48 c7 43        MOV        qword ptr [RBX + 0x68],0x0
+                 68 00 00 
+                 00 00
+       1428f9ac7 c6 43 70 00     MOV        byte ptr [RBX + 0x70],0x0
+       1428f9acb c6 83 b0        MOV        byte ptr [RBX + 0xb0],0x0
+                 00 00 00 00
+       1428f9ad2 48 c7 83        MOV        qword ptr [RBX + 0xd8],0x0
+                 d8 00 00 
+                 00 00 00 
+       1428f9add 48 c7 83        MOV        qword ptr [RBX + 0x110],0x0
+                 10 01 00 
+                 00 00 00 
+a bit further up,
+       1428f9a04 48 89 cb        MOV        RBX,RCX
+
+up again,
+       1428f99e5 53              PUSH       RBX
+- - - - - - - -
+we see were are constructing something big in rbx then putting it into the memory address where DAT_1463906e8 points to.
+tracing back our steps as a reminder, we had,
+142f2e599 48 89 47 48     MOV        qword ptr [RDI + 0x48],RAX=>FUN_142f20090 / puVar2[9] = FUN_142f20090;
+then that goes into FUN_142f20090 which is the function that uses FUN_1428f8ef0 which returns our DAT_1463906e8.
+so rdi/puvar2 gets its value from rax/fun_142f20090 (LEA  RAX,[FUN_142f20090]), which gets its value from FUN_1428f8ef0 which returns DAT_1463906e8 / plVar1.
+
+- - - - - - - -
+void FUN_142f20090(void)
+
+{
+  longlong *plVar1;
+  
+  plVar1 = (longlong *)FUN_1428f8ef0();
+                    /* WARNING: Could not recover jumptable at 0x000142f200aa. Too many branches */
+                    /* WARNING: Treating indirect jump as call */
+  (**(code **)(*plVar1 + 0x1e8))(plVar1,*(code **)(*plVar1 + 0x1e8));
+  return;
+}
+- - - - - - - -
+previously i came to the conclusion that puVar2 probably holds the instiated class object that probably holds the function wrapper method for get_main_loop at puVar2[9] / 72 byte offset.
+now i want to know what ' (**(code **)(*plVar1 + 0x1e8))(plVar1,*(code **)(*plVar1 + 0x1e8)); ' does, searching this up i found this is a virtual function call, function pointer dereference and call, in c++.
+reading what it does i can understand but not to the point where i could explain what each part does on its own so i will just copy this,
+*plVar1 (Dereference +0x00):
+Reads the first 8 bytes inside the Engine object. Since this class is polymorphic, offset +0x00 is the hidden vptr. This gives us the starting memory address of the Engine VTable in .rdata.
+*plVar1 + 0x1e8 (VTable Offset):
+Moves 0x1e8 bytes (488 bytes in decimal) past the start of that VTable array. Dividing by 8 bytes per pointer (488 / 8 = 61) tells us it is reading slot 61 in the VTable directory.
+*(code **)(...) (Fetch Function Pointer):
+Reads the 64-bit function address sitting inside that VTable slot.
+(...)(plVar1, ...) (Execute Call):
+Executes the function pointer it just retrieved, passing plVar1 (RCX) as the this pointer required for C++ member methods.
+so if plVar1 is an object, an instance of some godot internal engine class, and we are executing an indirect function call on one of its virtual functions from within its vtable,
+so i think the virtual function called could be the get_main_loop function wrapper (&Engine::get_main_loop in source code).
