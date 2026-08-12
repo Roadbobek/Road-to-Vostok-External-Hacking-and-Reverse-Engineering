@@ -798,3 +798,4 @@ Reads the 64-bit function address sitting inside that VTable slot.
 Executes the function pointer it just retrieved, passing plVar1 (RCX) as the this pointer required for C++ member methods.
 so if plVar1 is an object, an instance of some godot internal engine class, and we are executing an indirect function call on one of its virtual functions from within its vtable,
 so i think the virtual function called could be the get_main_loop function wrapper (&Engine::get_main_loop in source code).
+to check i want to peek inside the table, if the vtable is at offset 0 of the object its a part of we just need to see the what is first copied into plVar1 (RBX in first writing xref to memory address that DAT_1463906e8 resolves to).
