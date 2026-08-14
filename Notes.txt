@@ -799,3 +799,27 @@ Executes the function pointer it just retrieved, passing plVar1 (RCX) as the thi
 so if plVar1 is an object, an instance of some godot internal engine class, and we are executing an indirect function call on one of its virtual functions from within its vtable,
 so i think the virtual function called could be the get_main_loop function wrapper (&Engine::get_main_loop in source code).
 to check i want to peek inside the table, if the vtable is at offset 0 of the object its a part of we just need to see the what is first copied into plVar1 (RBX in first writing xref to memory address that DAT_1463906e8 resolves to).
+tracing back RBX from the top we first 'PUSH  RBX', pushing it onto the stack, in the microsoft x64 calling convention RBX is a nonvolatile (callee-saved) register, this means that if a called function (callee) uses RBX,
+it is responsible for saving and restoring its original value before returning control to the caller, thats why i think we are possibly pushing it onto the stack for restoration later.
+the next instruction utilising RBX is,
+       1428f99fb b8 01 00        MOV        EAX,0x1
+                 00 00
+       1428f9a00 66 89 41 20     MOV        word ptr [RCX + 0x20],AX
+       1428f9a04 48 89 cb        MOV        RBX,RCX
+i included the 2 lines right above as they the only instructions to write to RCX, we already learnt that in the blah blah ms x64 calling convention RCX is used to pass the first integer type or pointer argument to a function.
+but it also holds the 'this' pointer, the base address of the newly allocated object, its always passed in the RCX register, regardless of whether it is explicitly visible in the function signature.
+the this pointer is a hidden argument passed to every non-static c++ member function that points to the specific instance of the class on which the function was invoked.
+it is an implicit pointer available inside non-static member functions.
+for a class MyClass, the type of 'this' is MyClass* (or const MyClass* inside const member functions), which is a pointer to the memory address of the current class object (the instance of MyClass) invoking the member function, thats its type and value.
+it points to the actual block of memory in the stack or heap where the objects member variables (data members) are stored.
+when you access a member variable like x inside a method, the compiler implicitly translates it to this->x. the 'this pointer allows the function to locate the correct x belonging to that specific object among potentially many instances of the class.
+so for a non-static member function call (function call on an instiated class object, 'CALL  address' in assembly) the compiler treats the 'this' pointer as the implicit first parameter in the arguments for a member function.
+a non-static function simply means the function belongs to a specific object instance, not the class generally.
+non-static (instance) function: requires an object to run (for eg, car.Start()). it accesses data unique to that specific car (like its current speed). almost all standard c++ member functions are non-static.
+static function: belongs to the class itself (for eg, Car::GetTotalCount()). it runs without any object (instiated class) and cannot access specific object data.
+this is all seperate from the previosuly covered virtual functions, that is a separate concept where a child class provides a new implementation of a function originally defined in the parent class using the virtual key-word. thats runtime polymorphism.
+so RCX is parameter 1 when a non-static c++ member function (or constructor) starts execution, for member functions it then holds the 'this' pointer (the base address of the newly allocated object, the instance of the class containing the running non-static member function),
+for a constructor 'this' points to the address of allocated but uninitialised memory that is about to be initialised... im dumb it takes a while to click.
+RCX gets its value from the passed function arguments, but we also store the integer 1 (same in hex and dec) into EAX and straight away copy the value from AX which is used to access the lower 32 bits of EAX into RCX + hex20 which is dec32,
+which is an offset of 4 8-byte values. '*(undefined2 *)(param_1 + 4) = 1;' in ghidras pseudo-code.
+remember that when writing to RCX we use square brackets and an offset meaning it is a pointer to an object in memory.
