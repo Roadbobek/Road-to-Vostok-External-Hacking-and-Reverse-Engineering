@@ -771,7 +771,6 @@ tracing back our steps as a reminder, we had,
 142f2e599 48 89 47 48     MOV        qword ptr [RDI + 0x48],RAX=>FUN_142f20090 / puVar2[9] = FUN_142f20090;
 then that goes into FUN_142f20090 which is the function that uses FUN_1428f8ef0 which returns our DAT_1463906e8.
 so rdi/puvar2 gets its value from rax/fun_142f20090 (LEA  RAX,[FUN_142f20090]), which gets its value from FUN_1428f8ef0 which returns DAT_1463906e8 / plVar1.
-
 - - - - - - - -
 void FUN_142f20090(void)
 
@@ -823,3 +822,28 @@ for a constructor 'this' points to the address of allocated but uninitialised me
 RCX gets its value from the passed function arguments, but we also store the integer 1 (same in hex and dec) into EAX and straight away copy the value from AX which is used to access the lower 32 bits of EAX into RCX + hex20 which is dec32,
 which is an offset of 4 8-byte values. '*(undefined2 *)(param_1 + 4) = 1;' in ghidras pseudo-code.
 remember that when writing to RCX we use square brackets and an offset meaning it is a pointer to an object in memory.
+ive been away from this for about 2 weeks, i remember we are in some function and param_1 (rcx/ecx) is a pointer to a object which i think is the class containing out function wrapper?
+it is worth noting that i just found out that the function we call after setting up all these paramaters is FUN_1428f6de0, which is the same function we previously saw, if i remember properly its only job was too server as a wrapper around malloc,
+in the pseudo code it shows here as ' _DAT_1463906e8 = param_1; ',
+dissasembling the function and looking at its pseudo code it is pretty much the same as before,
+- - - - - - - -
+void * FUN_1428f6de0(size_t param_1)
+
+{
+  void *pvVar1;
+  
+  pvVar1 = malloc(param_1);
+  if (pvVar1 != (void *)0x0) {
+    return pvVar1;
+  }
+  FUN_142e49250("alloc_static","core/os/memory.cpp",0x72,"Parameter \"mem\" is null.",0,0);
+  return (void *)0x0;
+}
+- - - - - - - -
+so we see like before it allocates param_1 amount of memory onto the heap, but if param_1 is our object or well a reference to it in memory then im not sure.
+i just remembered i think i am in a constructor because i was assuming that rcx is the address for the built object but we are clearly constructing it here, i need to trace back my steps a bit.
+we were trying to find out what ' (**(code **)(*plVar1 + 0x1e8))(plVar1,*(code **)(*plVar1 + 0x1e8)); ' was doing, we traced plVar1 to a global variable DAT_1463906e8, searching for where DAT_1463906e8 gets created led us into this constructor (FUN_1428f99e0).
+plVar1 is our object pointer (which equals DAT_1463906e8),
+*plVar1 gets the vtable base address,
++ 0x1e8 gets a specific virtual function pointer from that table.
+my head hurts and i am still hungover and i dont remember where i am fully, it might be better to continue this later, but i remember that i am possibly in the initialisation of the class (maybe the OS class) which holds the wrapper for our get_main_loop function.
